@@ -1,0 +1,8 @@
+
+[2025-11-03 23:55:18] ALERT SUMMARY
+Low CTR articles detected (CTR < 50.0%):
+              article  CTR  impressions
+      Contact Support 0.00            2
+      Payment Failure 0.00            3
+Product Not Delivered 0.25            4
+
