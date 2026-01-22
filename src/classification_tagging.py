@@ -4,34 +4,45 @@ import time
 import pandas as pd
 from groq import Groq
 from dotenv import load_dotenv
+import streamlit as st
 
 
 class TicketClassifier:
     """
     A class-based system to classify support tickets using Groq's LLaMA model.
     """
-    def __init__(self, api_key_env="GROQ_API_KEY", model="llama-3.1-8b-instant"):
-        # Load Environment Variables
-        load_dotenv()
+  def __init__(self, api_key_env="GROQ_API_KEY", model="llama-3.1-8b-instant"):
+    # Load .env locally (won't harm cloud)
+    load_dotenv()
 
-        # Initialize Groq Client
-        self.client = Groq(api_key=os.getenv(api_key_env))
-        self.model = model
+    # 1) Try env first (local)
+    api_key = os.getenv(api_key_env)
 
-        # Define few-shot examples
-        self.examples = [
-            {"text": "App not loading after update",
-             "category": "Technical",
-             "tags": ["app-crash", "update"]},
+    # 2) If not found, try Streamlit secrets (cloud)
+    if not api_key:
+        api_key = st.secrets.get(api_key_env)
 
-            {"text": "Payment deducted twice",
-             "category": "Billing",
-             "tags": ["refund", "duplicate-charge"]},
+    if not api_key:
+        raise ValueError(
+            "Groq API Key not found. Add GROQ_API_KEY in Streamlit Secrets or .env file."
+        )
 
-            {"text": "Password reset email not received",
-             "category": "Account",
-             "tags": ["login", "email"]}
-        ]
+    self.client = Groq(api_key=api_key)
+    self.model = model
+
+    self.examples = [
+        {"text": "App not loading after update",
+         "category": "Technical",
+         "tags": ["app-crash", "update"]},
+
+        {"text": "Payment deducted twice",
+         "category": "Billing",
+         "tags": ["refund", "duplicate-charge"]},
+
+        {"text": "Password reset email not received",
+         "category": "Account",
+         "tags": ["login", "email"]}
+    ]
 
 
     def load_tickets(self, filepath: str):
@@ -162,9 +173,11 @@ class TicketClassifier:
         print("Ticket classification completed.\n")
 
     def save_results(self, output_path="data/processed/classified_tickets6.csv"):
-        results_df = pd.DataFrame(self.results)
-        results_df.to_csv(output_path, index=False)
-        print(f"Results saved to '{output_path}'.")
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
+    results_df = pd.DataFrame(self.results)
+    results_df.to_csv(output_path, index=False)
+    print(f"Results saved to '{output_path}'.")
 
         # Log errors if any
         error_df = results_df[results_df["pred_category"].isna()]
@@ -184,3 +197,4 @@ if __name__ == "__main__":
     classifier.load_tickets("data/processed/preprocessed_tickets6.csv")
     classifier.classify_all(rate_limit=1)
     classifier.save_results("data/processed/classified_tickets6.csv")
+
