@@ -12,6 +12,11 @@ from src.test_request3 import RecommendationClient
 from src.gap_analysis import RecommendationAnalyzer
 from integrations.slack_alerts import DailyAlertScheduler
 
+os.makedirs("data/raw", exist_ok=True)
+os.makedirs("data/processed", exist_ok=True)
+os.makedirs("logs", exist_ok=True)
+
+
 
 # CONFIG
 API_URL = "http://127.0.0.1:8000/recommend"
@@ -71,13 +76,16 @@ if page == "📥 Load Tickets from Google Sheet":
     st.subheader("Google Sheet Settings")
     sheet_name = st.text_input("Google Sheet Name", "tickets1")
     worksheet_name = st.text_input("Worksheet Name", "Sheet1")
-    creds_path = st.text_input("Credentials File Path", "credentials/service_account.json")
-    
-    submit_button = st.button("Load Data")
-    
-    if submit_button:
-        try:
-            google_sheet_loader = GoogleSheetLoader(sheet_name, worksheet_name, creds_path)
+   use_secrets = st.checkbox("Use Streamlit Secrets for Google Credentials", value=True)
+
+if submit_button:
+    try:
+        if use_secrets:
+            google_sheet_loader = GoogleSheetLoader(sheet_name, worksheet_name, creds_path=None)
+        else:
+            creds_path = st.text_input("Credentials File Path", "credentials/service_account.json")
+            google_sheet_loader = GoogleSheetLoader(sheet_name, worksheet_name, creds_path=creds_path)
+
             st.session_state.gsheet_data = google_sheet_loader.load_data()
             st.success("Tickets Loaded Successfully!")
 
@@ -345,7 +353,7 @@ if page == "📊 Gap Analysis":
 # TAB 5: Slack Alerts 
 
 # CONFIG
-SLACK_WEBHOOK_URL = os.getenv("SLACK_WEBHOOK_URL")
+SLACK_WEBHOOK_URL = os.getenv("SLACK_WEBHOOK_URL") or st.secrets.get("SLACK_WEBHOOK_URL")
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from integrations.slack_alerts import DailyAlertScheduler  # Import your class
@@ -414,4 +422,5 @@ if page == "🔔 Slack Alerts":
         st.dataframe(df.head())
     else:
         st.info("No coverage report found. Please upload one above.")
+
         st.stop()
