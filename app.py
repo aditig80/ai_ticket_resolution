@@ -69,22 +69,35 @@ page = st.sidebar.radio(
 
 
 # TAB 1: Load Tickets from Google Sheet
+# TAB 1: Load Tickets from Google Sheet
 if page == "📥 Load Tickets from Google Sheet":
     st.header("📥 Load Tickets from Google Sheet")
-    
-    # Moved the Google Sheets settings to the main page
+
     st.subheader("Google Sheet Settings")
     sheet_name = st.text_input("Google Sheet Name", "tickets1")
     worksheet_name = st.text_input("Worksheet Name", "Sheet1")
-   use_secrets = st.checkbox("Use Streamlit Secrets for Google Credentials", value=True)
 
-if submit_button:
-    try:
-        if use_secrets:
-            google_sheet_loader = GoogleSheetLoader(sheet_name, worksheet_name, creds_path=None)
-        else:
-            creds_path = st.text_input("Credentials File Path", "credentials/service_account.json")
-            google_sheet_loader = GoogleSheetLoader(sheet_name, worksheet_name, creds_path=creds_path)
+    use_secrets = st.checkbox(
+        "Use Streamlit Secrets for Google Credentials",
+        value=True
+    )
+
+    creds_path = None
+    if not use_secrets:
+        creds_path = st.text_input(
+            "Credentials File Path",
+            "credentials/service_account.json"
+        )
+
+    submit_button = st.button("Load Data")
+
+    if submit_button:
+        try:
+            google_sheet_loader = GoogleSheetLoader(
+                sheet_name=sheet_name,
+                worksheet_name=worksheet_name,
+                creds_path=creds_path
+            )
 
             st.session_state.gsheet_data = google_sheet_loader.load_data()
             st.success("Tickets Loaded Successfully!")
@@ -93,13 +106,12 @@ if submit_button:
                 st.write("### Loaded Tickets Preview")
                 st.dataframe(st.session_state.gsheet_data)
 
-                # Save the loaded data as tickets6.csv in data/raw folder
                 raw_data_dir = "data/raw"
-                os.makedirs(raw_data_dir, exist_ok=True)  # Ensure the folder exists
+                os.makedirs(raw_data_dir, exist_ok=True)
+
                 tickets_file_path = os.path.join(raw_data_dir, "tickets6.csv")
-                
-                # Save DataFrame to CSV
                 st.session_state.gsheet_data.to_csv(tickets_file_path, index=False)
+
                 st.success(f"✅ Tickets saved as {tickets_file_path}")
 
                 csv_data = st.session_state.gsheet_data.to_csv(index=False)
@@ -111,8 +123,10 @@ if submit_button:
                 )
             else:
                 st.warning("No data found in the Google Sheet.")
+
         except Exception as e:
             st.error(f"❌ Error loading data from Google Sheets: {e}")
+
 
 
 
@@ -424,3 +438,4 @@ if page == "🔔 Slack Alerts":
         st.info("No coverage report found. Please upload one above.")
 
         st.stop()
+
