@@ -2,7 +2,7 @@ import re
 import pandas as pd
 import os
 
-os.makedirs(os.path.dirname(self.output_file), exist_ok=True)
+
 
 class TicketProcessor:
     def __init__(self, input_file=None, output_file=None, df=None):
@@ -20,6 +20,7 @@ class TicketProcessor:
 
     def process_and_save(self):
         self.df["clean_text"] = self.df["ticket_text"].apply(self.clean_text)
+        os.makedirs(os.path.dirname(self.output_file), exist_ok=True)
         self.df.to_csv(self.output_file, index=False)
 
 
@@ -27,4 +28,5 @@ if __name__ == "__main__":
     processor = TicketProcessor("data/raw/tickets6.csv", "data/processed/preprocessed_tickets6.csv")
     processor.process_and_save()
     print(f"Preprocessed data saved to '{processor.output_file}'.")
+
 
