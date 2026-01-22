@@ -11,39 +11,43 @@ class TicketClassifier:
     """
     A class-based system to classify support tickets using Groq's LLaMA model.
     """
-  def __init__(self, api_key_env="GROQ_API_KEY", model="llama-3.1-8b-instant"):
-    # Load .env locally (won't harm cloud)
-    load_dotenv()
 
-    # 1) Try env first (local)
-    api_key = os.getenv(api_key_env)
+    def __init__(self, api_key_env="GROQ_API_KEY", model="llama-3.1-8b-instant"):
+        # Load .env locally (won't harm cloud)
+        load_dotenv()
 
-    # 2) If not found, try Streamlit secrets (cloud)
-    if not api_key:
-        api_key = st.secrets.get(api_key_env)
+        # 1) Try env first (local)
+        api_key = os.getenv(api_key_env)
 
-    if not api_key:
-        raise ValueError(
-            "Groq API Key not found. Add GROQ_API_KEY in Streamlit Secrets or .env file."
-        )
+        # 2) If not found, try Streamlit secrets (cloud)
+        if not api_key:
+            api_key = st.secrets.get(api_key_env)
 
-    self.client = Groq(api_key=api_key)
-    self.model = model
+        if not api_key:
+            raise ValueError(
+                "Groq API Key not found. Add GROQ_API_KEY in Streamlit Secrets or .env file."
+            )
 
-    self.examples = [
-        {"text": "App not loading after update",
-         "category": "Technical",
-         "tags": ["app-crash", "update"]},
+        self.client = Groq(api_key=api_key)
+        self.model = model
 
-        {"text": "Payment deducted twice",
-         "category": "Billing",
-         "tags": ["refund", "duplicate-charge"]},
+        # Define few-shot examples
+        self.examples = [
+            {"text": "App not loading after update",
+             "category": "Technical",
+             "tags": ["app-crash", "update"]},
 
-        {"text": "Password reset email not received",
-         "category": "Account",
-         "tags": ["login", "email"]}
-    ]
+            {"text": "Payment deducted twice",
+             "category": "Billing",
+             "tags": ["refund", "duplicate-charge"]},
 
+            {"text": "Password reset email not received",
+             "category": "Account",
+             "tags": ["login", "email"]}
+        ]
+
+        self.results = []
+        self.tickets = []
 
     def load_tickets(self, filepath: str):
         try:
@@ -51,54 +55,55 @@ class TicketClassifier:
             self.tickets = df["clean_text"].tolist()
             print(f"Info: Loaded {len(self.tickets)} tickets for classification.\n")
         except FileNotFoundError:
-            raise FileNotFoundError(f"File '{filepath}' not found. Please ensure preprocessing completed.")
-
+            raise FileNotFoundError(
+                f"File '{filepath}' not found. Please ensure preprocessing completed."
+            )
 
     def build_prompt(self, ticket_text: str) -> str:
         example_block = "\n\n".join(
-            [f"""Example:
-    Ticket: {e['text']}
-    Category: {e['category']}
-    Tags: {e['tags']}""" for e in self.examples]
+            [
+                f"""Example:
+Ticket: {e['text']}
+Category: {e['category']}
+Tags: {e['tags']}"""
+                for e in self.examples
+            ]
         )
 
         format_example = """
-    Expected Output Format (JSON):
-    {
-        "category": "Billing",
-        "tags": ["refund", "duplicate-charge"],
-        "confidence": 0.92
-    }
-    """
+Expected Output Format (JSON):
+{
+  "category": "Billing",
+  "tags": ["refund", "duplicate-charge"],
+  "confidence": 0.92
+}
+"""
 
         prompt = f"""
-    You are a support ticket classification engine.
+You are a support ticket classification engine.
 
-    Your job is to read customer support tickets and classify them into one of the categories:
-    [Billing, Technical, Account, Product, Refund, Delivery, Other]
+Your job is to read customer support tickets and classify them into one of the categories:
+[Billing, Technical, Account, Product, Refund, Delivery, Other]
 
-    For each ticket, return a JSON with the following keys:
-    - category (string)
-    - tags (list of 2-3 relevant keywords)
-    - confidence (a float between 0 and 1 showing how confident you are)
+For each ticket, return a JSON with the following keys:
+- category (string)
+- tags (list of 2-3 relevant keywords)
+- confidence (a float between 0 and 1 showing how confident you are)
 
-    Use the examples below as guidance:
+Use the examples below as guidance:
 
-    {example_block}
+{example_block}
 
-    {format_example}
+{format_example}
 
-    Now classify this new ticket:
-    Ticket: {ticket_text}
+Now classify this new ticket:
+Ticket: {ticket_text}
 
-    Respond ONLY in JSON.
-    """
+Respond ONLY in JSON.
+"""
         return prompt.strip()
 
     def classify_ticket(self, ticket_id: str, text: str) -> dict:
-        """
-        Sends a single ticket to the LLaMA model and returns classification result.
-        """
         prompt = self.build_prompt(text)
 
         try:
@@ -110,12 +115,8 @@ class TicketClassifier:
                         "content": (
                             "You are a support ticket classification engine. "
                             "Given a support ticket, classify it into one of the categories: "
-                            "[Billing, Technical, Account, Product, Refund, Delivery, Other].\n"
-                            "Return a JSON with these keys:\n"
-                            "- category (string)\n"
-                            "- tags (list of 2-3 relevant keywords)\n"
-                            "- confidence (float between 0 and 1)\n"
-                            "Follow the few-shot examples and return only valid JSON. Do not include explanations."
+                            "[Billing, Technical, Account, Product, Refund, Delivery, Other]. "
+                            "Return ONLY valid JSON with keys: category, tags, confidence."
                         )
                     },
                     {"role": "user", "content": prompt}
@@ -135,7 +136,6 @@ class TicketClassifier:
             try:
                 parsed = json.loads(raw_output)
             except json.JSONDecodeError as e:
-                print(f"JSON Decode Error: {e}")
                 parsed = {
                     "category": "Unknown",
                     "tags": [],
@@ -161,12 +161,12 @@ class TicketClassifier:
                 "error": str(e)
             }
 
-    def classify_all(self, ticket_id: list[str], text: list[str], rate_limit = 1):
+    def classify_all(self, ticket_id_list: list[str], text_list: list[str], rate_limit=1):
         print("Ticket classification started...\n")
         self.results = []
 
-        for ticket_id, text in zip(ticket_id, text):
-            result = self.classify_ticket(ticket_id,text)
+        for tid, txt in zip(ticket_id_list, text_list):
+            result = self.classify_ticket(tid, txt)
             self.results.append(result)
             time.sleep(rate_limit)
 
@@ -175,9 +175,9 @@ class TicketClassifier:
     def save_results(self, output_path="data/processed/classified_tickets6.csv"):
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
-    results_df = pd.DataFrame(self.results)
-    results_df.to_csv(output_path, index=False)
-    print(f"Results saved to '{output_path}'.")
+        results_df = pd.DataFrame(self.results)
+        results_df.to_csv(output_path, index=False)
+        print(f"Results saved to '{output_path}'.")
 
         # Log errors if any
         error_df = results_df[results_df["pred_category"].isna()]
@@ -187,14 +187,15 @@ class TicketClassifier:
             print(f"Logged {len(error_df)} failed records to 'logs/error_log6.csv'.")
 
         print("\nSUMMARY REPORT:")
-        print(f"Total Tickets Processed: {len(self.tickets)}")
+        print(f"Total Tickets Processed: {len(self.results)}")
         print(f"Successful: {len(results_df) - len(error_df)} | Failed: {len(error_df)}")
 
 
-# Example Usage
 if __name__ == "__main__":
     classifier = TicketClassifier()
     classifier.load_tickets("data/processed/preprocessed_tickets6.csv")
-    classifier.classify_all(rate_limit=1)
-    classifier.save_results("data/processed/classified_tickets6.csv")
 
+    # ⚠️ This needs ticket_id + clean_text lists
+    # classifier.classify_all(ticket_id_list, text_list)
+
+    classifier.save_results("data/processed/classified_tickets6.csv")
